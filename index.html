@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>林毅峰bmi</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #090a0f;
+            color: #f3f4f6;
+            overflow-x: hidden;
+            user-select: none;
+        }
+
+        /* 脈衝螢光效果 */
+        .neon-glow {
+            text-shadow: 0 0 10px rgba(16, 185, 129, 0.7), 0 0 20px rgba(16, 185, 129, 0.4);
+        }
+
+        /* 遊戲區域樣式 */
+        #game-canvas {
+            position: relative;
+            background: radial-gradient(circle at center, #111827 0%, #030712 100%);
+            border: 2px solid #1f2937;
+            overflow: hidden;
+            box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.8);
+        }
+
+        /* 網格背景紋理 */
+        .grid-bg {
+            background-image: linear-gradient(to right, rgba(31, 41, 55, 0.3) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(31, 41, 55, 0.3) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        /* 垃圾浮動動畫 */
+        @keyframes floatItem {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-8px) rotate(5deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
+        }
+
+        .trash-item {
+            position: absolute;
+            cursor: pointer;
+            transition: transform 0.15s ease-out, filter 0.15s;
+            animation: floatItem 3s infinite ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+        }
+
+        .trash-item:hover {
+            transform: scale(1.2) rotate(-5deg) !important;
+            filter: drop-shadow(0 0 12px rgba(52, 211, 153, 0.8));
+        }
+
+        .trash-item:active {
+            transform: scale(0.9) !important;
+        }
+
+        /* 得分浮動浮動文字 */
+        @keyframes scorePopup {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-40px) scale(1.3); }
+        }
+
+        .score-float {
+            position: absolute;
+            animation: scorePopup 0.8s forwards ease-out;
+            pointer-events: none;
+            font-weight: 900;
+            z-index: 50;
+        }
+
+        /* 自訂滑桿 */
+        input[type=range] {
+            accent-color: #10b981;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+    <!-- 頁首與資訊欄 -->
+    <header class="w-full bg-gray-900/80 backdrop-blur border-b border-gray-800 p-4 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            
+            <!-- 左上角：大號粗體標題 -->
+            <div class="flex items-center space-x-3 w-full md:w-auto">
+                <i class="fa-solid font-black text-3xl text-emerald-400 fa-weight-scale"></i>
+                <h1 class="text-3xl md:text-4xl font-black tracking-wider text-emerald-400 neon-glow">
+                    林毅峰bmi
+                </h1>
+            </div>
+
+            <!-- 右上角：分數與成績資訊 -->
+            <div class="flex items-center justify-between w-full md:w-auto gap-6 bg-gray-950/80 px-6 py-2 rounded-2xl border border-gray-800">
+                <div class="text-center">
+                    <span class="text-xs text-gray-400 block font-bold">目前關卡</span>
+                    <span id="stage-display" class="text-xl font-extrabold text-blue-400">第 1 關</span>
+                </div>
+                <div class="h-8 w-[1px] bg-gray-800"></div>
+                <div class="text-center">
+                    <span class="text-xs text-gray-400 block font-bold">已清理垃圾</span>
+                    <span id="cleared-display" class="text-xl font-extrabold text-amber-400">0 / 0</span>
+                </div>
+                <div class="h-8 w-[1px] bg-gray-800"></div>
+                <div class="text-center">
+                    <span class="text-xs text-gray-400 block font-bold">總積分</span>
+                    <span id="score-display" class="text-2xl font-black text-emerald-400">0</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 核心內容區域 -->
+    <main class="max-w-7xl w-full mx-auto p-4 flex-grow flex flex-col gap-8">
+        
+        <!-- 上半部：淨灘遊戲區域 -->
+        <section class="w-full">
+            <div class="flex justify-between items-center mb-2 px-1">
+                <h2 class="text-lg font-bold text-gray-300 flex items-center gap-2">
+                    <i class="fa-solid fa-water text-cyan-400"></i> 海灘垃圾清理區
+                    <span class="text-xs font-normal text-gray-400">(點擊垃圾拾取：小=10pts, 中=25pts, 大=50pts)</span>
+                </h2>
+                <button onclick="initGame()" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1 rounded-lg border border-gray-700 transition">
+                    <i class="fa-solid fa-arrows-rotate"></i> 重置本關
+                </button>
+            </div>
+
+            <div id="game-canvas" class="w-full h-80 md:h-[420px] rounded-2xl grid-bg flex items-center justify-center relative">
+                <!-- 遊戲提示 (初始無垃圾時顯示) -->
+                <div id="game-start-prompt" class="text-center z-10 hidden">
+                    <button onclick="initGame()" class="bg-emerald-500 hover:bg-emerald-600 text-gray-950 font-black text-lg px-8 py-3 rounded-full shadow-lg shadow-emerald-500/30 transition transform hover:scale-105">
+                        開始淨灘任務
+                    </button>
+                </div>
+
+                <!-- 勝利關卡彈窗 -->
+                <div id="victory-modal" class="absolute inset-0 bg-black/85 backdrop-blur-md z-30 flex flex-col items-center justify-center hidden opacity-0 transition-opacity duration-300">
+                    <div class="text-center p-8 bg-gray-900 border border-emerald-500/50 rounded-3xl max-w-md shadow-2xl shadow-emerald-500/20">
+                        <div class="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 animate-bounce">
+                            <i class="fa-solid fa-trophy"></i>
+                        </div>
+                        <h3 class="text-3xl font-black text-white mb-2">任務成功！</h3>
+                        <p class="text-gray-300 mb-6" id="victory-msg">感謝您為海洋永續環境貢獻一份力量！</p>
+                        <button onclick="nextLevel()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-gray-950 font-black text-xl py-4 rounded-xl shadow-lg transition transform hover:scale-105">
+                            前往下一關 <i class="fa-solid fa-arrow-right ml-2"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 下半部：BMI 動態計算表 -->
+        <section class="w-full mt-auto py-4">
+            <div id="bmi-card" class="bg-gray-900/90 border border-gray-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden transition-transform duration-700 ease-out">
+                
+                <!-- 背景標籤裝飾 -->
+                <div class="absolute -right-6 -bottom-6 text-9xl text-gray-800/20 font-black pointer-events-none select-none">
+                    BMI
+                </div>
+
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-gray-800 pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-emerald-400 flex items-center gap-2">
+                            <i class="fa-solid fa-calculator"></i> 動態 BMI 計算表
+                        </h2>
+                        <p class="text-xs text-gray-400 mt-1">每次連結與載入網頁，身高體重與傾斜角度皆自動重製隨機調整</p>
+                    </div>
+                    
+                    <div class="flex gap-2">
+                        <button onclick="randomizeBMI()" class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-gray-950 font-black text-sm px-5 py-2.5 rounded-xl transition flex items-center gap-2 shadow-lg shadow-emerald-500/20">
+                            <i class="fa-solid fa-dice"></i> 隨機調整數值與角度
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 計算表內容區 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                    
+                    <!-- 身高體重輸入控制區 -->
+                    <div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6 p-5 bg-gray-950/70 rounded-xl border border-gray-800 shadow-inner">
+                        
+                        <!-- 身高控制 -->
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <label class="text-sm font-bold text-gray-300 flex items-center gap-2">
+                                    <i class="fa-solid fa-ruler-vertical text-emerald-400"></i> 身高 (cm)
+                                </label>
+                                <span id="height-val" class="text-2xl font-black text-emerald-400">170</span>
+                            </div>
+                            <input type="range" id="height-slider" min="120" max="210" value="170" step="1"
+                                class="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-emerald-400" oninput="updateBMI()">
+                            <div class="flex justify-between text-xs text-gray-500 font-bold">
+                                <span>120 cm</span>
+                                <span>210 cm</span>
+                            </div>
+                        </div>
+
+                        <!-- 體重控制 -->
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <label class="text-sm font-bold text-gray-300 flex items-center gap-2">
+                                    <i class="fa-solid fa-weight-scale text-emerald-400"></i> 體重 (kg)
+                                </label>
+                                <span id="weight-val" class="text-2xl font-black text-emerald-400">65</span>
+                            </div>
+                            <input type="range" id="weight-slider" min="30" max="140" value="65" step="0.5"
+                                class="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-emerald-400" oninput="updateBMI()">
+                            <div class="flex justify-between text-xs text-gray-500 font-bold">
+                                <span>30 kg</span>
+                                <span>140 kg</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BMI 結果顯示 -->
+                    <div class="bg-gray-950/90 rounded-xl p-6 border border-gray-800 flex flex-col items-center justify-center text-center shadow-lg">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">計算結果 (BMI)</span>
+                        <div id="bmi-score" class="text-5xl font-black text-emerald-400 my-2">22.5</div>
+                        <div id="bmi-status" class="px-4 py-1 rounded-full text-sm font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            適中範圍
+                        </div>
+                        <p id="bmi-desc" class="text-xs text-gray-400 mt-3">身體指數維持良好，繼續保持！</p>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 頁腳 -->
+    <footer class="w-full border-t border-gray-900 bg-black/60 p-4 text-center text-xs text-gray-600">
+        SDGs 14 保育海洋生態 ‧ 林毅峰永續淨灘主題專案
+    </footer>
+
+    <!-- 腳本邏輯 -->
+    <script>
+        // --- 音效系統 (Web Audio API) ---
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function playSound(type) {
+            try {
+                if (!audioCtx) audioCtx = new AudioCtx();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                const now = audioCtx.currentTime;
+
+                if (type === 'collect') {
+                    // 拾取音效
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                } else if (type === 'victory') {
+                    // 通關音效
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.setValueAtTime(400, now + 0.1);
+                    osc.frequency.setValueAtTime(500, now + 0.2);
+                    osc.frequency.setValueAtTime(600, now + 0.3);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                    osc.start(now);
+                    osc.stop(now + 0.5);
+                }
+            } catch (e) {
+                // 音效播放失敗時容錯處理
+            }
+        }
+
+        // --- 遊戲邏輯 ---
+        let score = 0;
+        let stage = 1;
+        let totalTrashCount = 0;
+        let currentTrashCount = 0;
+
+        // 垃圾圖示與類型設定
+        const trashTypes = [
+            { sizeName: '小', points: 10, scale: 'text-2xl', radius: 30, icons: ['fa-bottle-water', 'fa-bag-shopping', 'fa-box-archive'] },
+            { sizeName: '中', points: 25, scale: 'text-4xl', radius: 45, icons: ['fa-wine-bottle', 'fa-dumpster', 'fa-oil-can'] },
+            { sizeName: '大', points: 50, scale: 'text-6xl', radius: 60, icons: ['fa-gas-pump', 'fa-box-open', 'fa-car-battery'] }
+        ];
+
+        const gameCanvas = document.getElementById('game-canvas');
+        const scoreDisplay = document.getElementById('score-display');
+        const stageDisplay = document.getElementById('stage-display');
+        const clearedDisplay = document.getElementById('cleared-display');
+        const victoryModal = document.getElementById('victory-modal');
+
+        // 初始化/啟動遊戲
+        function initGame() {
+            // 清理舊的垃圾
+            const oldItems = document.querySelectorAll('.trash-item');
+            oldItems.forEach(item => item.remove());
+
+            victoryModal.classList.add('hidden', 'opacity-0');
+
+            // 隨關卡增加垃圾量 (基礎 6 個，每關加 2)
+            totalTrashCount = 5 + stage * 2;
+            currentTrashCount = totalTrashCount;
+
+            updateUI();
+
+            const canvasWidth = gameCanvas.clientWidth - 80;
+            const canvasHeight = gameCanvas.clientHeight - 80;
+
+            for (let i = 0; i < totalTrashCount; i++) {
+                // 隨機選擇垃圾種類 (大小)
+                const type = trashTypes[Math.floor(Math.random() * trashTypes.length)];
+                const iconClass = type.icons[Math.floor(Math.random() * type.icons.length)];
+
+                const trashEl = document.createElement('div');
+                trashEl.className = `trash-item ${type.scale} text-emerald-400/80 hover:text-emerald-300`;
+                trashEl.innerHTML = `<i class="fa-solid ${iconClass}"></i>`;
+
+                // 隨機擺放位置 (避開邊界)
+                const posX = Math.max(30, Math.floor(Math.random() * canvasWidth));
+                const posY = Math.max(30, Math.floor(Math.random() * canvasHeight));
+
+                trashEl.style.left = `${posX}px`;
+                trashEl.style.top = `${posY}px`;
+
+                // 綁定點擊事件
+                trashEl.onclick = (e) => collectTrash(e, trashEl, type.points);
+
+                gameCanvas.appendChild(trashEl);
+            }
+        }
+
+        // 收集垃圾
+        function collectTrash(event, element, points) {
+            playSound('collect');
+
+            // 增加分數
+            score += points;
+            currentTrashCount--;
+
+            // 顯示得分動畫
+            showFloatingScore(event.clientX, event.clientY, `+${points}`);
+
+            // 移除垃圾元素
+            element.remove();
+            updateUI();
+
+            // 檢查是否全數撿完
+            if (currentTrashCount <= 0) {
+                setTimeout(() => {
+                    playSound('victory');
+                    document.getElementById('victory-msg').innerText = `您已清空第 ${stage} 關的海灘垃圾！累積獲得 ${score} 積分。`;
+                    victoryModal.classList.remove('hidden');
+                    setTimeout(() => victoryModal.classList.remove('opacity-0'), 10);
+                }, 300);
+            }
+        }
+
+        // 飄動分數特效
+        function showFloatingScore(x, y, text) {
+            const rect = gameCanvas.getBoundingClientRect();
+            const scoreEl = document.createElement('div');
+            scoreEl.className = 'score-float text-emerald-400 text-xl font-black';
+            scoreEl.innerText = text;
+            scoreEl.style.left = `${x - rect.left}px`;
+            scoreEl.style.top = `${y - rect.top - 20}px`;
+
+            gameCanvas.appendChild(scoreEl);
+            setTimeout(() => scoreEl.remove(), 800);
+        }
+
+        // 下一關
+        function nextLevel() {
+            stage++;
+            initGame();
+        }
+
+        function updateUI() {
+            scoreDisplay.innerText = score;
+            stageDisplay.innerText = `第 ${stage} 關`;
+            clearedDisplay.innerText = `${totalTrashCount - currentTrashCount} / ${totalTrashCount}`;
+        }
+
+        // --- BMI 計算表邏輯 ---
+        const heightSlider = document.getElementById('height-slider');
+        const weightSlider = document.getElementById('weight-slider');
+        const heightVal = document.getElementById('height-val');
+        const weightVal = document.getElementById('weight-val');
+        const bmiScore = document.getElementById('bmi-score');
+        const bmiStatus = document.getElementById('bmi-status');
+        const bmiDesc = document.getElementById('bmi-desc');
+        const bmiCard = document.getElementById('bmi-card');
+
+        // 隨機重置數值與角度 (每次載入或點擊按鈕時)
+        function randomizeBMI() {
+            // 隨機身高 130~200 cm
+            const randHeight = Math.floor(Math.random() * (200 - 130 + 1)) + 130;
+            // 隨機體重 40~110 kg
+            const randWeight = (Math.random() * (110 - 40) + 40).toFixed(1);
+            // 隨機角度 -12deg 到 +12deg 呈現豐富角度變幻
+            const randAngle = (Math.random() * 24 - 12).toFixed(1);
+
+            heightSlider.value = randHeight;
+            weightSlider.value = randWeight;
+
+            // 設置整體 BMI 卡片旋轉與傾斜角度
+            bmiCard.style.transform = `rotate(${randAngle}deg)`;
+
+            updateBMI();
+        }
+
+        // 計算 BMI 並更新顯示
+        function updateBMI() {
+            const h = parseFloat(heightSlider.value);
+            const w = parseFloat(weightSlider.value);
+
+            heightVal.innerText = h;
+            weightVal.innerText = w;
+
+            const hMeters = h / 100;
+            const bmi = (w / (hMeters * hMeters)).toFixed(1);
+
+            bmiScore.innerText = bmi;
+
+            // 評估 BMI 狀況
+            if (bmi < 18.5) {
+                bmiStatus.innerText = '體重過輕';
+                bmiStatus.className = 'px-4 py-1 rounded-full text-sm font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30';
+                bmiDesc.innerText = '建議多補充均衡營養與適度鍛鍊肌肉。';
+            } else if (bmi >= 18.5 && bmi < 24) {
+                bmiStatus.innerText = '標準範圍';
+                bmiStatus.className = 'px-4 py-1 rounded-full text-sm font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                bmiDesc.innerText = '體態十分健康，請繼續維持良好的作息！';
+            } else if (bmi >= 24 && bmi < 27) {
+                bmiStatus.innerText = '體重過重';
+                bmiStatus.className = 'px-4 py-1 rounded-full text-sm font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30';
+                bmiDesc.innerText = '建議稍微調整飲食，增加有氧運動時間。';
+            } else {
+                bmiStatus.innerText = '肥胖範圍';
+                bmiStatus.className = 'px-4 py-1 rounded-full text-sm font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30';
+                bmiDesc.innerText = '請注意心血管健康，制定減脂與運動計畫。';
+            }
+        }
+
+        // 網頁載入完成時執行初始化
+        window.onload = function() {
+            initGame();
+            randomizeBMI(); // 每次連結到網頁時隨機重製數值與角度
+        };
+    </script>
+</body>
+</html>
